@@ -1,4 +1,5 @@
 import os
+from os import environ
 import re
 import requests
 import pandas as pd
@@ -14,7 +15,7 @@ class GeniusArtistDataCollect:
     """A wrapper class that is able to retrieve, clean, and organize all the album songs of a given artist
     Uses the Genius API and webscraping techniques to get the data."""
 
-    def __init__(self, client_access_token, artist_name, album):
+    def __init__(self, client_access_token, artist_name, albums):
         """
         Instantiate a GeniusArtistDataCollect object
         :param client_access_token: str - Token to access the Genius API. Create one at https://genius.com/developers
@@ -26,7 +27,7 @@ class GeniusArtistDataCollect:
 
         self.artist_name = artist_name
 
-        self.album = album
+        self.albums = albums
 
         self.base_url = 'https://api.genius.com/'
 
@@ -34,11 +35,13 @@ class GeniusArtistDataCollect:
 
         self.artist_songs = None
 
-        self.album_tracks = self.get_album_tracks(album)
+        self.album_tracks = []
+        for a in albums:
+            self.album_tracks.extend(self.get_album_tracks(a))
 
     def get_album_tracks(self, album):
-        cid = keyring.get_password('api.spotify.com', 'Spotify Client ID')
-        secret = keyring.get_password('api.spotify.com', 'Spotify Client Secret')
+        cid = environ.get('SPOTIFY_CLIENT_ID')
+        secret = environ.get('SPOTIFY_CLIENT_SECRET')
         client_credentials_manager = SpotifyClientCredentials(client_id=cid, client_secret=secret) 
         sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager) 
 
@@ -70,7 +73,7 @@ class GeniusArtistDataCollect:
 
         # Search for the artist and get their id
         search_artist = self.search(self.artist_name)
-        artist_id = str(search_artist['response']['hits'][0]['result']['primary_artist']['id'])
+        artist_id = str(search_artist['response']['hits'][1]['result']['primary_artist']['id'])
 
         print("ID: " + artist_id)
 
@@ -89,14 +92,13 @@ class GeniusArtistDataCollect:
             request_url = self.base_url + 'artists/' + artist_id + '/songs' + '?per_page=50&page=' + str(page)
             response = requests.get(request_url, headers=self.headers).json()
 
-            #print(response)
+            
 
             # For each song which the given artist is the primary_artist of the song, add the song title and
             # Genius URL to the DataFrame
             for song in response['response']['songs']:
-
-                # change this later to use spotify api cuz it's faster that way
-                inAlbum = song['title'].lower() in self.album_tracks
+                
+                inAlbum = self.song_in_album(song['title'].lower())
 
                 if str(song['primary_artist']['id']) == artist_id and inAlbum:
 
@@ -124,6 +126,12 @@ class GeniusArtistDataCollect:
         self.artist_songs = df
 
         return self.artist_songs
+
+    def song_in_album(self, title):
+        for song in self.album_tracks:
+            if (title.strip() in song):
+                return True
+        return False
 
     def get_song_html(self, url):
         """Scrapes the entire HTML of the url parameter"""
